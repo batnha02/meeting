@@ -16,7 +16,6 @@ from api_client import APIClient
 def main():
     app = QApplication(sys.argv)
     app.setApplicationName("CompanyChat")
-    app.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
     font = QFont("Segoe UI", 10)
     font.setStyleStrategy(QFont.StyleStrategy.PreferAntialias)
@@ -24,11 +23,13 @@ def main():
 
     api = APIClient()
     login_win = LoginWindow()
+    messenger_win = None
 
     def on_login_success(user_data: dict, server_url: str):
+        nonlocal messenger_win
         api.setup(server_url, user_data["token"])
-        messenger = MessengerWindow(user_data["user"], server_url, api)
-        messenger.show()
+        messenger_win = MessengerWindow(user_data["user"], server_url, api)
+        messenger_win.show()
         login_win.close()
 
     login_win.login_success.connect(on_login_success)

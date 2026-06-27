@@ -170,8 +170,8 @@ class MessageBubble(QWidget):
 
             outer.addLayout(bubble_col)
         else:
-            av = AvatarWidget(sender_name, avatar_color, 32)
-            outer.addWidget(av, 0, Qt.AlignmentFlag.AlignBottom)
+            self._av = AvatarWidget(sender_name, avatar_color, 32)
+            outer.addWidget(self._av, 0, Qt.AlignmentFlag.AlignBottom)
 
             bubble_col = QVBoxLayout()
             bubble_col.setSpacing(2)
@@ -231,8 +231,8 @@ class IncomingCallDialog(QDialog):
         layout.setContentsMargins(24, 28, 24, 24)
         layout.setSpacing(0)
 
-        av = AvatarWidget(caller_name, caller_color, 72)
-        layout.addWidget(av, 0, Qt.AlignmentFlag.AlignHCenter)
+        self._av = AvatarWidget(caller_name, caller_color, 72)
+        layout.addWidget(self._av, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addSpacing(14)
 
         name = QLabel(caller_name)
@@ -420,6 +420,15 @@ class DataLoader(QObject):
                 self.messages_loaded.emit([], context)
         threading.Thread(target=_run, daemon=True).start()
 
+    def search_contacts(self, text: str):
+        def _run():
+            try:
+                results = self._api.search_users(text)
+                self.contacts_loaded.emit(results, [])
+            except Exception:
+                self.contacts_loaded.emit([], [])
+        threading.Thread(target=_run, daemon=True).start()
+
 
 # ─── Messenger Window ──────────────────────────────────────────────────────────
 
@@ -438,6 +447,8 @@ class MessengerWindow(QMainWindow):
         # Pending call (from_id, data)
         self._pending_call: dict | None = None
         self._active_call_window: CallWindow | None = None
+        self._bubbles: list = []
+        self._contact_widgets: list = []
 
         self.setWindowTitle(f"CompanyChat — {user_data['display_name']}")
         self.resize(1060, 700)
@@ -676,6 +687,7 @@ class MessengerWindow(QMainWindow):
         self.contact_list.clear()
         self.contacts_map.clear()
         self.groups_map.clear()
+        self._contact_widgets: list[ContactItemWidget] = []
 
         for c in contacts:
             self.contacts_map[c["id"]] = c
@@ -683,6 +695,7 @@ class MessengerWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, {"type": "user", "id": c["id"]})
             item.setSizeHint(QSize(280, 68))
             widget = ContactItemWidget(c)
+            self._contact_widgets.append(widget)
             self.contact_list.addItem(item)
             self.contact_list.setItemWidget(item, widget)
 
@@ -697,6 +710,7 @@ class MessengerWindow(QMainWindow):
             item.setData(Qt.ItemDataRole.UserRole, {"type": "group", "id": g["id"]})
             item.setSizeHint(QSize(280, 68))
             widget = ContactItemWidget(g_display, is_group=True)
+            self._contact_widgets.append(widget)
             self.contact_list.addItem(item)
             self.contact_list.setItemWidget(item, widget)
 
@@ -708,14 +722,7 @@ class MessengerWindow(QMainWindow):
         if not text:
             self.loader.load_contacts()
             return
-
-        def _run():
-            try:
-                results = self.api.search_users(text)
-                self._populate_contacts(results, [])
-            except Exception:
-                pass
-        threading.Thread(target=_run, daemon=True).start()
+        self.loader.search_contacts(text)
 
     def _on_contact_selected(self, current, _previous):
         if not current:
@@ -731,6 +738,7 @@ class MessengerWindow(QMainWindow):
         self.current_is_group = (ctype == "group")
 
         # Clear messages
+        self._bubbles.clear()
         while self.msg_layout.count() > 1:
             item = self.msg_layout.takeAt(0)
             if item.widget():
@@ -765,6 +773,7 @@ class MessengerWindow(QMainWindow):
         if self.current_chat_id != cid or self.current_is_group != (ctype == "group"):
             return
 
+        self._bubbles.clear()
         while self.msg_layout.count() > 1:
             item = self.msg_layout.takeAt(0)
             if item.widget():
@@ -782,6 +791,7 @@ class MessengerWindow(QMainWindow):
                 msg.get("avatar_color", "#3a3b3c"),
                 show_name,
             )
+            self._bubbles.append(bubble)
             self.msg_layout.insertWidget(self.msg_layout.count() - 1, bubble)
             prev_sender = msg["sender_id"]
 
@@ -814,6 +824,7 @@ class MessengerWindow(QMainWindow):
             text, self.user["display_name"],
             datetime.now().isoformat(), True,
         )
+        self._bubbles.append(bubble)
         self.msg_layout.insertWidget(self.msg_layout.count() - 1, bubble)
         QTimer.singleShot(30, self._scroll_to_bottom)
 
@@ -876,6 +887,7 @@ class MessengerWindow(QMainWindow):
                 msg.get("avatar_color", "#3a3b3c"),
                 show_name,
             )
+            self._bubbles.append(bubble)
             self.msg_layout.insertWidget(self.msg_layout.count() - 1, bubble)
             QTimer.singleShot(30, self._scroll_to_bottom)
 
